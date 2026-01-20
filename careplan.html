@@ -191,12 +191,7 @@
     return tmp.innerHTML;
   }
 
-  function toZhActivity(eng){
-    const e = (eng || "").toLowerCase();
-    if(e.includes("avoid exercise")) return "避免運動";
-    if(e.includes("deep breathing") || e.includes("coughing")) return "深呼吸與咳嗽訓練";
-    return eng || "（未命名活動）";
-  }
+
 
   function pickTitle(cp){
     const cat = cp?.category?.[0];
@@ -361,7 +356,7 @@
             <div class="check">
               <div class="mark ${a.done ? "" : "pending"}">${a.done ? "✓" : "•"}</div>
               <div style="min-width:0">
-                <div class="main">${escapeHtml(toZhActivity(a.main))}</div>
+                <div class="main">${escapeHtml(a.main)}</div>
                 <div class="sub">${escapeHtml(a.main)} ・ ${escapeHtml(statusZh(a.aStatus))}${a.code ? ` ・ ${escapeHtml(a.codeDisp || "")}（SNOMED: ${escapeHtml(a.code)}）` : ""}</div>
                 <details>
                   <pre>${escapeHtml(JSON.stringify(a.raw, null, 2))}</pre>
@@ -375,7 +370,7 @@
       <div class="block">
         <div class="bh">
           <div class="t">文字敘述（Narrative）</div>
-          <div class="muted">已做保守清理</div>
+
         </div>
         <div class="bb">
           ${narrativeSafe ? `<div style="line-height:1.55">${narrativeSafe}</div>` : `<div class="empty">此 CarePlan 沒有 text.div。</div>`}
@@ -384,7 +379,7 @@
 
       <div class="block">
         <div class="bh">
-          <div class="t">系統資訊（可收斂）</div>
+          <div class="t">系統資訊</div>
           <div class="muted">lastUpdated / tags / references</div>
         </div>
         <div class="bb">
