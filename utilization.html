@@ -202,14 +202,7 @@
     return dt.isValid ? dt.toFormat("yyyy-LL-dd HH:mm") : iso;
   }
 
-  function humanName(patient) {
-    const n = (patient.name && patient.name[0]) ? patient.name[0] : null;
-    if (!n) return "Unknown";
-    if (n.text) return n.text;
-    const given = (n.given || []).join(" ");
-    const family = n.family || "";
-    return `${given} ${family}`.trim() || "Unknown";
-  }
+
 
   function safeGet(obj, path, fallback=null){
     try{
@@ -255,7 +248,11 @@
     if (!patientId) throw new Error("找不到病患 ID");
 
     const patient = await client.request(`Patient/${patientId}`);
-    document.getElementById("pName").textContent = humanName(patient);
+    const name = patient.name
+        ? (patient.name[0].text || (patient.name[0].prefix + " " + patient.name[0].family + " " +
+        " " + (patient.name[0].given ? patient.name[0].given.join(" ") : "")))
+        : "未知姓名";
+    document.getElementById("pName").textContent = name;
     document.getElementById("pId").textContent = patient.id;
     if(document.getElementById("pId_dup")) document.getElementById("pId_dup").textContent = patient.id;
     document.getElementById("pGender").textContent = patient.gender || "—";
