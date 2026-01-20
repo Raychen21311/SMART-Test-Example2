@@ -1,1 +1,1 @@
-# SMART-Test-Example2
+# SMART-on-FHIR-Patient-health-app

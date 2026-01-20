@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Patient Health Dashboard (CarePlan)</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/fhirclient/build/fhir-client.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"></script>
+  <link rel="stylesheet" href="css/theme.css">
+</head>
+
+<body>
+  <div class="page">
+    <!-- Topbar -->
+    <div class="topbar">
+      <div class="brand">
+        <div class="brand-badge">PH</div>
+        <div class="brand-title">
+          <div class="t1">Patient Health</div>
+          <div class="t2">CarePlan Dashboard</div>
+        </div>
+      </div>
+
+      <div class="tabs" role="navigation" aria-label="Pages">
+        <a class="tab" href="overview.html">Overview</a>
+        <a class="tab" href="timeline.html">Timeline</a>
+        <a class="tab" href="labs.html">Labs & Reports</a>
+        <a class="tab active" href="careplan.html">CarePlan</a>
+        <a class="tab" href="utilization.html">Utilization</a>
+      </div>
+
+      <div class="top-actions">
+        <div class="pill" title="目前病人資訊（由 FHIR 載入）">
+          <span class="dot"></span>
+          <span style="color:var(--muted)">ID:</span>
+          <code id="pId">—</code>
+        </div>
+        <button class="btn" onclick="returnToSelect()">重新選擇病人</button>
+      </div>
+    </div>
+
+    <h1>CarePlan</h1>
+    <p id="loadHint" style="color:var(--muted); font-weight:800">照護計畫</p>
+
+    <!-- Patient banner -->
+    <div class="patient-card">
+      <div class="patient-block">
+        <div class="name" id="pName">正在讀取...</div>
+        <div class="meta">
+          ID: <span id="pId_dup">（同上）</span>
+          ｜ 性別: <span id="pGender">—</span>
+          ｜ 生日: <span id="pBirth">—</span>
+        </div>
+    </div>
+
+    <!-- Summary cards -->
+    <div class="summary-grid" aria-label="CarePlan summary">
+      <div class="card"><div class="k">全部計畫</div><div id="sumTotal" class="v">—</div><div class="d">Total CarePlans</div></div>
+      <div class="card"><div class="k">進行中</div><div id="sumActive" class="v">—</div><div class="d">Active</div></div>
+      <div class="card"><div class="k">已完成</div><div id="sumCompleted" class="v">—</div><div class="d">Completed</div></div>
+      <div class="card"><div class="k">已取消</div><div id="sumCancelled" class="v">—</div><div class="d">Cancelled</div></div>
+      <div class="card"><div class="k">活動總數</div><div id="sumActivities" class="v">—</div><div class="d">Activities count</div></div>
+    </div>
+
+    <!-- Main content -->
+    <div class="charts-wrap">
+      <div class="section-head">
+        <div class="h2">Plans</div>
+        <div class="hint">左：清單｜右：詳情（摘要 + 活動清單 + Narrative）</div>
+      </div>
+
+      <div class="content-grid">
+        <!-- List -->
+        <div class="panel-card">
+          <div class="panel-title">
+            <div class="t">CarePlan 清單 <span class="tag" id="listTag">—</span></div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn secondary" id="btnFilter" title="切換：全部/進行中/已完成/已取消">篩選：全部</button>
+              <button class="btn secondary" id="btnSort" title="切換排序：期間/更新">排序：期間新→舊</button>
+            </div>
+          </div>
+          <div class="panel-body" id="list">
+            <div class="empty">尚未載入 CarePlan。</div>
+          </div>
+        </div>
+
+        <!-- Detail -->
+        <div class="panel-card">
+          <div class="panel-title">
+            <div class="t">CarePlan 詳情 <span class="tag" id="detailTag">—</span></div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn secondary" id="btnToggleDebug">Debug：關閉</button>
+            </div>
+          </div>
+          <div class="panel-body" id="detail">
+            <div class="empty">請從左側選一筆 CarePlan。</div>
+          </div>
+        </div>
+      </div>
+
+      <pre id="debug" style="display:none"></pre>
+    </div>
+
+    <div class="footer">
+      <span>© Patient Health Dashboard</span>
+      <span class="footer-muted">SMART on FHIR</span>
+    </div>
+  </div>
+
+<script>
+  // ====== launch reset (same pattern as other pages) ======
+  function returnToSelect() {
+      // 清除選擇的 ID 並回到選擇頁面
+    sessionStorage.removeItem("selected_patient_id");
+    window.location.href = "patient-select.html";
+  }
+
+  // ====== helpers ======
+  const DateTime = luxon.DateTime;
+
+  function fmtISO(d){
+    if(!d) return "—";
+    try{
+      const dt = DateTime.fromISO(d);
+      if(!dt.isValid) return d;
+      return dt.toFormat("yyyy-LL-dd");
+    }catch{ return d; }
+  }
+
+  function statusZh(s){
+    const m = {
+      "active":"進行中",
+      "completed":"已完成",
+      "cancelled":"已取消",
+      "draft":"草稿",
+      "entered-in-error":"輸入錯誤"
+    };
+    return m[s] || (s || "—");
+  }
+
+  function intentZh(i){
+    const m = { "order":"醫囑/處置計畫", "plan":"計畫", "proposal":"建議", "option":"選項" };
+    return m[i] || (i || "—");
+  }
+
+  function toneClass(status){
+    if(status==="completed") return "ok";
+    if(status==="active") return "warn";
+    if(status==="cancelled" || status==="entered-in-error") return "bad";
+    return "";
+  }
+
+  function codingText(c){
+    const cc = c?.[0];
+    if(!cc) return "";
+    const disp = cc.display || "";
+    const code = cc.code ? `SNOMED: ${cc.code}` : "";
+    return (disp && code) ? `${disp}（${code}）` : (disp || code);
+  }
+
+  function stripTags(html){
+    if(!html) return "";
+    const tmp = document.createElement("div");
+    tmp.innerHTML = String(html);
+    return (tmp.textContent || tmp.innerText || "").trim();
+  }
+
+  function sanitizeNarrative(html){
+    if(!html) return "";
+    const allowed = new Set(["BR","P","DIV","UL","OL","LI","B","STRONG","I","EM","SPAN"]);
+    const tmp = document.createElement("div");
+    tmp.innerHTML = String(html);
+
+    const walk = (node) => {
+      for(const ch of Array.from(node.childNodes)){
+        if(ch.nodeType === Node.ELEMENT_NODE){
+          if(!allowed.has(ch.tagName)){
+            ch.replaceWith(document.createTextNode(ch.textContent || ""));
+            continue;
+          }
+          // strip all attributes
+          for(const a of Array.from(ch.attributes)) ch.removeAttribute(a.name);
+          walk(ch);
+        }else if(ch.nodeType === Node.COMMENT_NODE){
+          ch.remove();
+        }
+      }
+    };
+    walk(tmp);
+    return tmp.innerHTML;
+  }
+
+  function toZhActivity(eng){
+    const e = (eng || "").toLowerCase();
+    if(e.includes("avoid exercise")) return "避免運動";
+    if(e.includes("deep breathing") || e.includes("coughing")) return "深呼吸與咳嗽訓練";
+    return eng || "（未命名活動）";
+  }
+
+  function pickTitle(cp){
+    const cat = cp?.category?.[0];
+    const t = cat?.text || cat?.coding?.[0]?.display;
+    if(t) return t;
+    const n = stripTags(cp?.text?.div || "");
+    if(n) return n.split("\\n")[0].slice(0,80);
+    return `CarePlan/${cp?.id || "—"}`;
+  }
+
+  // ====== state ======
+  let carePlans = [];
+  let selectedId = null;
+
+  let filterMode = "all";       // all | active | completed | cancelled
+  let sortMode = "periodDesc";  // periodDesc | updatedDesc
+
+  function applyFilterSort(list){
+    let out = list.slice();
+    if(filterMode !== "all"){
+      out = out.filter(cp => (cp.status || "") === filterMode);
+    }
+
+    const periodKey = (cp) => {
+      const s = cp?.period?.start ? DateTime.fromISO(cp.period.start).toMillis() : 0;
+      const e = cp?.period?.end ? DateTime.fromISO(cp.period.end).toMillis() : 0;
+      return e || s || 0;
+    };
+    const updKey = (cp) => cp?.meta?.lastUpdated ? DateTime.fromISO(cp.meta.lastUpdated).toMillis() : 0;
+
+    out.sort((a,b)=>{
+      if(sortMode === "updatedDesc") return updKey(b) - updKey(a);
+      return periodKey(b) - periodKey(a);
+    });
+
+    return out;
+  }
+
+  function setSummary(list){
+    const total = list.length;
+    const active = list.filter(x => x.status === "active").length;
+    const completed = list.filter(x => x.status === "completed").length;
+    const cancelled = list.filter(x => x.status === "cancelled").length;
+    const activities = list.reduce((acc, cp) => acc + ((cp.activity || []).length), 0);
+
+    document.getElementById("sumTotal").textContent = total;
+    document.getElementById("sumActive").textContent = active;
+    document.getElementById("sumCompleted").textContent = completed;
+    document.getElementById("sumCancelled").textContent = cancelled;
+    document.getElementById("sumActivities").textContent = activities;
+
+    const shown = applyFilterSort(list).length;
+    document.getElementById("listTag").textContent = `${shown} 筆`;
+  }
+
+  function renderList(){
+    const host = document.getElementById("list");
+    const shown = applyFilterSort(carePlans);
+
+    document.getElementById("listTag").textContent = `${shown.length} 筆`;
+
+    if(!shown.length){
+      host.innerHTML = `<div class="empty">目前沒有符合條件的 CarePlan。</div>`;
+      return;
+    }
+
+    host.innerHTML = shown.map(cp => {
+      const title = pickTitle(cp);
+      const status = cp.status || "—";
+      const tone = toneClass(status);
+      const period = `${fmtISO(cp?.period?.start)} – ${fmtISO(cp?.period?.end)}`;
+      const intent = intentZh(cp.intent);
+      const actCount = (cp.activity || []).length;
+      const addrCount = (cp.addresses || []).length;
+      const updated = cp?.meta?.lastUpdated ? fmtISO(cp.meta.lastUpdated) : "—";
+
+      const isActive = (cp.id === selectedId);
+
+      return `
+        <div class="cp-item ${isActive ? "active" : ""}" role="button" tabindex="0" onclick="selectPlan('${cp.id}')">
+          <div class="cp-top">
+            <div>
+              <div class="cp-title">${escapeHtml(title)}</div>
+              <div class="cp-sub">
+                <b>${escapeHtml(statusZh(status))}</b> ・ ${escapeHtml(intent)}<br/>
+                期間：${escapeHtml(period)} ｜ 更新：${escapeHtml(updated)}
+              </div>
+            </div>
+            <div class="chip ${tone}">
+              <span class="dot"></span>${escapeHtml(statusZh(status))}
+            </div>
+          </div>
+          <div class="chiprow">
+            <div class="chip"><span class="dot"></span>活動：${actCount} 項</div>
+            <div class="chip"><span class="dot"></span>關聯問題：${addrCount} 個</div>
+            <div class="chip"><span class="dot"></span>ID：<span class="mono">${escapeHtml(cp.id || "—")}</span></div>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function renderDetail(){
+    const host = document.getElementById("detail");
+
+    const cp = carePlans.find(x => x.id === selectedId);
+    if(!cp){
+      document.getElementById("detailTag").textContent = "—";
+      host.innerHTML = `<div class="empty">請從左側選一筆 CarePlan。</div>`;
+      return;
+    }
+
+    document.getElementById("detailTag").textContent = statusZh(cp.status || "");
+
+    const title = pickTitle(cp);
+    const status = cp.status || "—";
+    const intent = intentZh(cp.intent);
+    const period = `${fmtISO(cp?.period?.start)} – ${fmtISO(cp?.period?.end)}`;
+    const catCoding = cp?.category?.[0]?.coding || [];
+    const catText = codingText(catCoding);
+
+    const subjRef = cp?.subject?.reference || "";
+    const encRef = cp?.encounter?.reference || "";
+    const addrRefs = (cp?.addresses || []).map(a => a.reference).filter(Boolean);
+
+    const activities = (cp?.activity || []).map((a, idx) => {
+      const d = a?.detail || {};
+      const aStatus = d.status || "—";
+      const done = aStatus === "completed";
+      const main = d?.code?.text || d?.code?.coding?.[0]?.display || `Activity #${idx+1}`;
+      const codeSys = d?.code?.coding?.[0]?.system || "";
+      const code = d?.code?.coding?.[0]?.code || "";
+      const codeDisp = d?.code?.coding?.[0]?.display || "";
+      return { done, aStatus, main, codeSys, code, codeDisp, raw: a };
+    });
+
+    const narrativeSafe = sanitizeNarrative(cp?.text?.div || "");
+
+    host.innerHTML = `
+      <div class="hero">
+        <h3>${escapeHtml(title)} <span class="muted">（照護計畫）</span></h3>
+        <div class="subline">
+          <span>狀態：<b>${escapeHtml(statusZh(status))}</b></span>
+          <span>意圖：<b>${escapeHtml(intent)}</b></span>
+          <span>期間：<b>${escapeHtml(period)}</b></span>
+          ${catText ? `<span>代碼：<b>${escapeHtml(catText)}</b></span>` : ``}
+        </div>
+        <div class="subline" style="margin-top:10px">
+          ${subjRef ? `<button class="linkbtn" onclick="openRef('${escapeAttr(subjRef)}')">病患 <code>${escapeHtml(subjRef)}</code></button>` : ``}
+          ${encRef ? `<button class="linkbtn" onclick="openRef('${escapeAttr(encRef)}')">就醫事件 <code>${escapeHtml(encRef)}</code></button>` : ``}
+          ${addrRefs.map(r => `<button class="linkbtn" onclick="openRef('${escapeAttr(r)}')">關聯問題 <code>${escapeHtml(r)}</code></button>`).join("")}
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="bh">
+          <div class="t">活動清單（介入項目）</div>
+          <div class="muted">${activities.length} 項</div>
+        </div>
+        <div class="bb">
+          ${activities.length ? activities.map(a => `
+            <div class="check">
+              <div class="mark ${a.done ? "" : "pending"}">${a.done ? "✓" : "•"}</div>
+              <div style="min-width:0">
+                <div class="main">${escapeHtml(toZhActivity(a.main))}</div>
+                <div class="sub">${escapeHtml(a.main)} ・ ${escapeHtml(statusZh(a.aStatus))}${a.code ? ` ・ ${escapeHtml(a.codeDisp || "")}（SNOMED: ${escapeHtml(a.code)}）` : ""}</div>
+                <details>
+                  <pre>${escapeHtml(JSON.stringify(a.raw, null, 2))}</pre>
+                </details>
+              </div>
+            </div>
+          `).join("") : `<div class="empty">此 CarePlan 沒有 activity。</div>`}
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="bh">
+          <div class="t">文字敘述（Narrative）</div>
+          <div class="muted">已做保守清理</div>
+        </div>
+        <div class="bb">
+          ${narrativeSafe ? `<div style="line-height:1.55">${narrativeSafe}</div>` : `<div class="empty">此 CarePlan 沒有 text.div。</div>`}
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="bh">
+          <div class="t">系統資訊（可收斂）</div>
+          <div class="muted">lastUpdated / tags / references</div>
+        </div>
+        <div class="bb">
+          <details>
+            <summary>詳細資訊</summary>
+            <pre>${escapeHtml(JSON.stringify({
+              id: cp.id,
+              status: cp.status,
+              intent: cp.intent,
+              period: cp.period || null,
+              subject: subjRef || null,
+              encounter: encRef || null,
+              addresses: addrRefs,
+              meta: cp.meta || null,
+              category: cp.category || null
+            }, null, 2))}</pre>
+          </details>
+        </div>
+      </div>
+    `;
+
+    // debug content
+    const dbg = document.getElementById("debug");
+    if(dbg && dbg.style.display !== "none"){
+      dbg.textContent = JSON.stringify(cp, null, 2);
+    }
+  }
+
+  // expose selectPlan globally for onclick
+  window.selectPlan = function(id){
+    selectedId = id;
+    renderList();
+    renderDetail();
+  }
+
+  function cycleFilter(){
+    const order = ["all","active","completed","cancelled"];
+    const idx = order.indexOf(filterMode);
+    filterMode = order[(idx+1) % order.length];
+    const label = filterMode==="all" ? "全部"
+      : filterMode==="active" ? "進行中"
+      : filterMode==="completed" ? "已完成"
+      : "已取消";
+    document.getElementById("btnFilter").textContent = "篩選：" + label;
+    renderList();
+    // if selection disappears, pick first
+    const shown = applyFilterSort(carePlans);
+    if(selectedId && !shown.find(x => x.id === selectedId)){
+      selectedId = shown[0]?.id || null;
+      renderList(); renderDetail();
+    }
+    document.getElementById("listTag").textContent = `${applyFilterSort(carePlans).length} 筆`;
+  }
+
+  function cycleSort(){
+    sortMode = (sortMode === "periodDesc") ? "updatedDesc" : "periodDesc";
+    document.getElementById("btnSort").textContent = (sortMode==="periodDesc") ? "排序：期間新→舊" : "排序：更新新→舊";
+    renderList();
+  }
+
+  document.getElementById("btnFilter").addEventListener("click", cycleFilter);
+  document.getElementById("btnSort").addEventListener("click", cycleSort);
+
+  document.getElementById("btnToggleDebug").addEventListener("click", ()=>{
+    const dbg = document.getElementById("debug");
+    const on = dbg.style.display !== "none";
+    dbg.style.display = on ? "none" : "block";
+    document.getElementById("btnToggleDebug").textContent = on ? "Debug：關閉" : "Debug：開啟";
+    if(!on){
+      const cp = carePlans.find(x => x.id === selectedId);
+      dbg.textContent = cp ? JSON.stringify(cp, null, 2) : "";
+    }
+  });
+
+  function escapeHtml(s){
+    return String(s ?? "")
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;")
+      .replaceAll("'","&#039;");
+  }
+  function escapeAttr(s){ return escapeHtml(s); }
+
+  // ====== reference drawer: reuse debug area (no new layout to keep consistent) ======
+  async function openRef(ref){
+    try{
+      const dbg = document.getElementById("debug");
+      dbg.style.display = "block";
+      document.getElementById("btnToggleDebug").textContent = "Debug：開啟";
+
+      dbg.textContent = `Loading ${ref}...`;
+      const res = await window._client.request(ref);
+      dbg.textContent = JSON.stringify(res, null, 2);
+      dbg.scrollIntoView({behavior:"smooth", block:"nearest"});
+    }catch(err){
+      const dbg = document.getElementById("debug");
+      dbg.style.display = "block";
+      dbg.textContent = `讀取 ${ref} 失敗：\\n` + String(err?.message || err);
+    }
+  }
+  window.openRef = openRef;
+
+  // ====== main FHIR load ======
+  async function loadCarePlans(client, patientId){
+    // Synthea / many servers accept subject or patient. We'll try subject first then patient.
+    const queries = [
+      `CarePlan?subject=Patient/${patientId}&_count=200`,
+      `CarePlan?patient=${patientId}&_count=200`
+    ];
+
+    for(const q of queries){
+      try{
+        const bundle = await client.request(q);
+        const cps = (bundle.entry || []).map(e => e.resource).filter(r => r?.resourceType === "CarePlan");
+        if(cps.length) return cps;
+      }catch(_e){ /* try next */ }
+    }
+    return [];
+  }
+
+  FHIR.oauth2.ready().then(async (client) => {
+  // 1. 取得病患 ID (優先從 Session 拿，解決 launch/patient 缺失問題)
+      let patientId = sessionStorage.getItem("selected_patient_id"); 
+  
+  // 如果 Session 沒拿到 (例如直接進入 overview.html)，才嘗試從 client context 拿
+      if (!patientId && client.patient && client.patient.id) {
+        patientId = client.patient.id;
+      }
+
+      if (!patientId) {
+        throw new Error("找不到病患 ID，請先重新選擇病人。");
+      } 
+      const patient = await client.request(`Patient/${patientId}`);;
+
+      // 2. 獲取基本資料
+      const name = patient.name
+        ? (patient.name[0].text || (patient.name[0].prefix + " " + patient.name[0].family + " " +
+        " " + (patient.name[0].given ? patient.name[0].given.join(" ") : "")))
+        : "未知姓名";
+
+    document.getElementById("pName").textContent = name;
+    const dup = document.getElementById("pId_dup");
+    if (dup) dup.textContent = patientId;
+    document.getElementById("pGender").textContent = patient.gender ?? "未知";
+    document.getElementById("pBirth").textContent = patient.birthDate ?? "未知";
+
+    carePlans = await loadCarePlans(client, patientId);
+
+    setSummary(carePlans);
+
+    if(!carePlans.length){
+      document.getElementById("list").innerHTML = `<div class="empty">此病人目前沒有 CarePlan。</div>`;
+      document.getElementById("detail").innerHTML = `<div class="empty">沒有可顯示的 CarePlan。</div>`;
+      document.getElementById("listTag").textContent = "0 筆";
+      return;
+    }
+
+    // select first after filter/sort
+    const shown = applyFilterSort(carePlans);
+    selectedId = shown[0]?.id || carePlans[0].id;
+
+    renderList();
+    renderDetail();
+  }).catch(err => {
+    console.error(err);
+    setText("pName", "請由 launch.html 啟動或點擊按鈕重新選擇。"+ err.message);
+    setText("loadHint", "SMART session 未就緒"+ err.message);
+    showDebug(String(err));  });
+</script>
+</body>
+</html>

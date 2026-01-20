@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>選擇病患 - Patient Selector</title>
+  <script src="https://cdn.jsdelivr.net/npm/fhirclient/build/fhir-client.js"></script>
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --brand: #3b82f6;
+      --card: #ffffff;
+      --text: #1f2937;
+    }
+    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 40px 20px; }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { text-align: center; font-weight: 900; margin-bottom: 30px; }
+    .loading { text-align: center; font-weight: 700; color: var(--brand); }
+    
+    .patient-list { display: grid; gap: 15px; }
+    .patient-item {
+      background: var(--card);
+      padding: 20px;
+      border-radius: 16px;
+      border: 1px solid rgba(0,0,0,0.05);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    .patient-item:hover { transform: translateY(-2px); border-color: var(--brand); }
+    
+    .info .name { font-size: 18px; font-weight: 800; color: var(--brand); }
+    .info .meta { font-size: 14px; color: #6b7280; margin-top: 4px; }
+    
+    .data-badge {
+      background: #eff6ff;
+      color: var(--brand);
+      padding: 8px 16px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 900;
+      border: 1px solid #dbeafe;
+    }
+    .rich-data { background: #dcfce7; color: #16a34a; border-color: #bbf7d0; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>選擇測試病患</h1>
+  <div id="status" class="loading">正在連線至 FHIR 伺服器並分析病患資料量...</div>
+  <div id="patientList" class="patient-list"></div>
+</div>
+
+<script>
+  FHIR.oauth2.ready().then(async (client) => {
+    try {
+      // 1. 抓取病患清單
+      const bundle = await client.request("Patient?_count=20");
+      const patients = bundle.entry || [];
+      const listContainer = document.getElementById("patientList");
+      document.getElementById("status").style.display = "none";
+
+      // 定義 Index 頁面需要的核心資源
+      const checkList = [
+        
+
+
+        { key: 'vitals', label: '生命徵象', query: 'Observation?category=vital-signs' },
+        { key: 'labs', label: '實驗室報告', query: 'Observation?category=laboratory' },
+        { key: 'timeline', label: '診斷', query: 'Condition' },
+        { key: 'careplan', label: '照護計畫', query: 'CarePlan' },
+        { key: 'utilization', label: '就醫紀錄', query: 'Encounter' }
+      ];
+
+      for (const entry of patients) {
+        const p = entry.resource;
+        const id = p.id;
+        
+        // 姓名處理：優先取 text，若無則組合 prefix, family, given
+        let name = "未知姓名";
+        if (p.name && p.name[0]) {
+          const n = p.name[0];
+          name = n.text || `${n.prefix || ''} ${n.family || ''} ${n.given ? n.given.join(" ") : ''}`.trim();
+        }
+
+        // 2. 平行查詢多項資源量 (使用 _summary=count 確保速度)
+        const results = await Promise.all(
+          checkList.map(item => 
+            client.request(`${item.query}&patient=${id}&_summary=count`)
+              .catch(() => ({ total: 0 }))
+          )
+        );
+        
+        // 3. 彙整統計與標籤
+        let totalDataCount = 0;
+        let activeTags = [];
+        results.forEach((res, index) => {
+          const count = res.total || 0;
+          if (count > 0) {
+            totalDataCount += count;
+            activeTags.push(checkList[index].label);
+          }
+        });
+
+        // --- 自動篩選邏輯 ---
+        // 如果這個病人完全沒有上述任何一項臨床資料，就跳過不顯示
+        if (totalDataCount === 0) continue;
+
+        // 4. 渲染畫面
+        const item = document.createElement("div");
+        item.className = "patient-item";
+        
+        // 建立標籤 HTML
+        const tagsHtml = activeTags.map(tag => 
+          `<span style="font-size:11px; background:#e0f2fe; color:#0369a1; padding:2px 8px; border-radius:4px; margin-right:4px; border:1px solid #bae6fd;">${tag}</span>`
+        ).join("");
+
+        // 判斷豐富度樣式
+        const badgeClass = totalDataCount > 10 ? "data-badge rich-data" : "data-badge";
+        const badgeText = `${totalDataCount} 筆相關資料`;
+
+        item.innerHTML = `
+          <div class="info">
+            <div class="name">${name}</div>
+            <div class="meta">ID: ${id} | ${p.gender || 'N/A'} | ${p.birthDate || ''}</div>
+            <div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:4px;">${tagsHtml}</div>
+          </div>
+          <div class="${badgeClass}">${badgeText}</div>
+        `;
+
+        item.onclick = () => {
+          sessionStorage.setItem("selected_patient_id", id);
+          window.location.href = "overview.html";
+        };
+
+        listContainer.appendChild(item);
+      }
+
+      // 如果過濾後一個病人都沒有
+      if (listContainer.children.length === 0) {
+        document.getElementById("status").style.display = "block";
+        document.getElementById("status").textContent = "找不到具備臨床資料的測試病患。";
+      }
+
+    } catch (err) {
+      console.error(err);
+      document.getElementById("status").textContent = "讀取失敗，請檢查權限或登入狀態。";
+    }
+  });
+
+</script>
+</body>
+
+</html>

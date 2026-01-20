@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Launch App</title>
+    <script src="https://cdn.jsdelivr.net/npm/fhirclient/build/fhir-client.js"></script>
+</head>
+<body>
+<script>
+    sessionStorage.clear();
+    localStorage.clear();
+
+    FHIR.oauth2.authorize({
+        clientId: "你的實際Client_ID", 
+        // 注意：移除 launch/patient 才能獲取讀取所有病患的權限
+        scope: "openid fhirUser patient/*.read", 
+        redirectUri: "patient-select.html", 
+        iss: "https://thas.mohw.gov.tw/v/r4/sim/WzIsIiIsIiIsIkFVVE8iLDAsMCwwLCIiLCIiLCIiLCIiLCIiLCIiLCIiLDAsMSwiIl0/fhir",
+        pkce: true 
+    });
+</script>
+</body>
+</html>

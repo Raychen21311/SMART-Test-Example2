@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Labs & Reports</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/fhirclient/build/fhir-client.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1"></script>
+
+  <link rel="stylesheet" href="css/theme.css">
+</head>
+
+<body>
+  <div class="page">
+    <div class="topbar">
+      <div class="brand">
+        <div class="brand-badge">PH</div>
+        <div class="brand-title">
+          <div class="t1">Patient Health</div>
+          <div class="t2">Labs & Reports</div>
+        </div>
+      </div>
+      <div class="tabs">
+        <a class="tab" href="overview.html">Overview</a>
+        <a class="tab" href="timeline.html">Timeline</a>
+        <a class="tab active" href="labs.html">Labs & Reports</a>
+        <a class="tab" href="careplan.html">CarePlan</a>
+        <a class="tab" href="utilization.html">Utilization</a>
+      </div>
+      <div class="top-actions">
+        <div class="pill"><span class="dot"></span><span style="color:var(--muted)">ID:</span><code id="pId">—</code></div>
+        <button class="btn" onclick="returnToSelect()">重新選擇病人</button>
+      </div>
+    </div>
+
+    <h1>Labs & Reports</h1>
+    <p id="loadHint" style="color:var(--muted); font-weight:800">臨床檢驗與診斷報告分析</p>
+
+    <div class="patient-card">
+      <div class="patient-block">
+        <div class="name" id="pName">讀取中...</div>
+        <div class="meta">
+          ID: <span id="pId_dup">—</span> ｜ 性別: <span id="pGender">—</span> ｜ 生日: <span id="pBirth">—</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="queryInfo" style="display:none"></div>
+
+    <div class="summary-grid">
+      <div class="card"><div class="k">檢驗總數</div><div id="cardLabCount" class="v">—</div><div id="cardLabHint" class="d">—</div></div>
+      <div class="card"><div class="k">項目種類</div><div id="cardUnique" class="v">—</div><div id="cardUniqueHint" class="d">—</div></div>
+      <div class="card"><div class="k">診斷報告</div><div id="cardRptCount" class="v">—</div><div id="cardRptHint" class="d">—</div></div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div style="font-weight: 950; margin-bottom: 15px;">檢驗項目篩選</div>
+        <select id="labSelect" disabled><option>載入中...</option></select>
+        <div class="mini">
+          <div class="box"><div class="k">最近值</div><div id="latestValue" class="v">—</div><div id="latestDate" class="d">—</div></div>
+          <div class="box"><div class="k">參考範圍</div><div id="refRange" class="v">—</div><div id="refRangeNote" class="d">—</div></div>
+        </div>
+        <div id="rangeStatus" style="display:none; margin-top:15px; padding:10px; border-radius:10px; font-weight:900; text-align:center;">
+          <span id="rangeText"></span>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title"><span id="chartTitle">趨勢分析</span><span style="font-size:12px; color:var(--muted)">Trend Analysis</span></div>
+        <div class="chart-body"><canvas id="labChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top: 16px;">
+      <div style="font-weight: 950; margin-bottom: 12px; font-size: 18px;">DiagnosticReport 報告列表</div>
+      <div id="reportList" class="list"></div>
+    </div>
+    <pre id="debug"></pre>
+  </div>
+
+  <script>
+    let labChartInstance = null;
+    function returnToSelect() { sessionStorage.removeItem("selected_patient_id"); window.location.href = "patient-select.html"; }
+    function fmtDateISO(iso){ if(!iso) return "—"; try { return luxon.DateTime.fromISO(iso).toFormat("yyyy-LL-dd"); } catch { return iso; } }
+    function fmtDateJS(d){ if(!d) return "—"; try { return luxon.DateTime.fromJSDate(d).toFormat("yyyy-LL-dd"); } catch { return "—"; } }
+    function safeStr(v){ return (v == null || v === "") ? "—" : String(v); }
+    function showDebug(obj){ const pre = document.getElementById("debug"); pre.style.display = "block"; pre.textContent = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2); }
+    function setText(id, text){ const el = document.getElementById(id); if(el) el.textContent = text; }
+
+    async function fetchAll(client, initialUrl, maxPages = 20){
+      const out = [];
+      let bundle = await client.request(initialUrl);
+      let pages = 0;
+      while(bundle){
+        (bundle.entry ?? []).forEach(e => { if(e.resource) out.push(e.resource); });
+        const nextUrl = (bundle.link ?? []).find(l => l.relation === "next")?.url;
+        if(!nextUrl || ++pages >= maxPages) break;
+        bundle = await client.request(nextUrl);
+      }
+      return out;
+    }
+
+    function codeLabelFromObservation(obs){
+      const c = obs?.code;
+      const text = c?.text || c?.coding?.[0]?.display || c?.coding?.[0]?.code || "Unknown";
+      const coding = c?.coding?.[0];
+      const key = (coding?.system ? coding.system + "|" : "") + (coding?.code ?? text);
+      return { key, best: text, code: coding?.code ?? "", system: coding?.system ?? "" };
+    }
+
+    function pickEffectiveISO(obs){ return obs?.effectiveDateTime || obs?.effectivePeriod?.end || obs?.issued || null; }
+    function getNumericValue(obs){
+      const vq = obs?.valueQuantity;
+      return (vq && typeof vq.value === "number") ? { value: vq.value, unit: vq.unit || vq.code || "" } : null;
+    }
+    function summarizeRefRange(obs){
+      const rr = obs?.referenceRange?.[0];
+      return { low: rr?.low?.value, high: rr?.high?.value, unit: rr?.low?.unit || "", text: rr?.text };
+    }
+
+    function buildRangeStatus(latest, rr){
+      const box = document.getElementById("rangeStatus");
+      const t = document.getElementById("rangeText");
+      if(!box || !t) return;
+      box.classList.remove("ok","warn","bad");
+      if(!latest || (!rr || (rr.low == null && rr.high == null))){ box.style.display = "none"; return; }
+      const val = latest.value;
+      let status = "within";
+      if(rr.low != null && val < rr.low) status = "low";
+      else if(rr.high != null && val > rr.high) status = "high";
+      box.style.display = "inline-flex";
+      if(status === "within"){ box.classList.add("ok"); t.textContent = "在參考區間內"; }
+      else if(status === "low"){ box.classList.add("warn"); t.textContent = "低於參考下限"; }
+      else { box.classList.add("bad"); t.textContent = "高於參考上限"; }
+    }
+
+    function drawLabChart(series, rr, label){
+      const canvas = document.getElementById("labChart");
+      if(!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if(labChartInstance) labChartInstance.destroy();
+      const datasets = [{ label: label || "Lab", data: series, tension: 0.25, borderColor: '#3b82f6', backgroundColor: '#3b82f6' }];
+      if(rr && (rr.low != null || rr.high != null)){
+          if(rr.low != null) datasets.push({ label: "Low", data: series.map(p=>({x:p.x, y:rr.low})), borderDash:[5,5], pointRadius:0, borderColor:'#94a3b8', fill:false });
+          if(rr.high != null) datasets.push({ label: "High", data: series.map(p=>({x:p.x, y:rr.high})), borderDash:[5,5], pointRadius:0, borderColor:'#94a3b8', fill:false });
+      }
+      labChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: { datasets },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: { x: { type: 'time', time: { unit: 'month' } } }
+        }
+      });
+    }
+
+    function renderReportCard(r){
+      const title = r?.code?.text || r?.code?.coding?.[0]?.display || "DiagnosticReport";
+      const dt = r?.effectiveDateTime || r?.issued;
+      const div = document.createElement("div");
+      div.className = "item";
+      div.innerHTML = `<div class="title">${title}</div><div class="meta">日期：${fmtDateISO(dt)}</div><div class="meta">狀態：${r.status}</div>`;
+      return div;
+    }
+
+    async function loadLabs(client, patientId){
+      const qInfo = document.getElementById("queryInfo");
+      if(qInfo) qInfo.textContent = "Loading...";
+      let obs = await fetchAll(client, `Observation?patient=${patientId}&category=laboratory&_count=200&_sort=-date`);
+      setText("cardLabCount", String(obs.length));
+      const map = new Map();
+      obs.forEach(o => {
+        const nv = getNumericValue(o); if(!nv) return;
+        const cl = codeLabelFromObservation(o);
+        if(!map.has(cl.key)) map.set(cl.key, { key: cl.key, label: cl.best, count: 0, data: [] });
+        map.get(cl.key).count++;
+      });
+      const tests = Array.from(map.values()).sort((a,b)=>b.count-a.count);
+      const sel = document.getElementById("labSelect");
+      sel.innerHTML = "";
+      if(!tests.length){ sel.appendChild(new Option("無數據")); return {tests:[], obs}; }
+      tests.forEach(t => sel.appendChild(new Option(`${t.label} (${t.count}筆)`, t.key)));
+      sel.disabled = false;
+      return { tests, obs };
+    }
+
+    FHIR.oauth2.ready().then(async (client) => {
+      let patientId = sessionStorage.getItem("selected_patient_id") || client.patient.id;
+
+  // 如果 Session 沒拿到 (例如直接進入 overview.html)，才嘗試從 client context 拿
+      if (!patientId && client.patient && client.patient.id) {
+        patientId = client.patient.id;
+      }
+
+      if (!patientId) {
+        throw new Error("找不到病患 ID，請先重新選擇病人。");
+      } 
+      const patient = await client.request(`Patient/${patientId}`);;
+      const name = patient.name
+        ? (patient.name[0].text || (patient.name[0].prefix + " " + patient.name[0].family + " " +
+        " " + (patient.name[0].given ? patient.name[0].given.join(" ") : "")))
+        : "未知姓名";
+
+      document.getElementById("pName").textContent = name;
+      document.getElementById("pId").textContent = patientId;
+      document.getElementById("pId_dup").textContent = patientId;
+      document.getElementById("pGender").textContent = patient.gender || "—";
+      document.getElementById("pBirth").textContent = patient.birthDate || "—";
+
+      const { tests, obs } = await loadLabs(client, patientId);
+      const sel = document.getElementById("labSelect");
+      
+      const render = () => {
+        const chosen = tests.find(t => t.key === sel.value);
+        if(!chosen) return;
+        const filtered = obs.filter(o => codeLabelFromObservation(o).key === chosen.key);
+        const pts = filtered.map(o => ({ x: new Date(pickEffectiveISO(o)), y: getNumericValue(o).value })).sort((a,b)=>a.x-b.x);
+        const rr = summarizeRefRange(filtered[0]);
+        const latestObs = filtered[0];
+        const latestVal = getNumericValue(latestObs);
+        
+        setText("chartTitle", chosen.label);
+        setText("latestValue", latestVal ? `${latestVal.value} ${latestVal.unit}` : "—");
+        setText("latestDate", fmtDateISO(pickEffectiveISO(latestObs)));
+        setText("refRange", (rr.low != null || rr.high != null) ? `${rr.low ?? ''} ~ ${rr.high ?? ''} ${rr.unit}` : "—");
+        
+        buildRangeStatus(latestVal, rr);
+        drawLabChart(pts, rr, chosen.label);
+      };
+
+      sel.onchange = render;
+      if(tests.length) render();
+
+      const reports = await fetchAll(client, `DiagnosticReport?patient=${patientId}&_count=50`);
+      setText("cardRptCount", String(reports.length));
+      const rList = document.getElementById("reportList");
+      reports.slice(0,10).forEach(r => rList.appendChild(renderReportCard(r)));
+
+    }).catch(err => {
+      showDebug(err);
+      setText("pName", "發生錯誤: " + err.message);
+    });
+  </script>
+</body>
+</html>
