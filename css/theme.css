@@ -819,9 +819,9 @@ details.more summary {
 }
 
 .chart-body {
-  flex: 1;
-  padding: 16px;
-  min-height: 350px;
+  position: relative; /* 必須：讓內部 Canvas 能根據此容器定位 */
+  height: 350px;      /* 關鍵：設定一個固定高度或 max-height */
+  width: 100%;
 }
 
 /* JSON 原始資料顯示區 */
