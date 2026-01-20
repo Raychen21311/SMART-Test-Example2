@@ -300,7 +300,8 @@ FHIR.oauth2.ready().then(async (client) => {
       // 1. 讀取病人基本資料
       const patient = await client.request(`Patient/${patientId}`);
       const name = patient.name
-        ? (patient.name[0].text || (patient.name[0].family + " " + (patient.name[0].given ? patient.name[0].given.join(" ") : "")))
+        ? (patient.name[0].text || (patient.name[0].prefix + " " + patient.name[0].family + " " +
+        " " + (patient.name[0].given ? patient.name[0].given.join(" ") : "")))
         : "未知姓名";
 
       setText("pName", name);
@@ -346,4 +347,5 @@ FHIR.oauth2.ready().then(async (client) => {
   </script>
 </body>
 </html>
+
 
