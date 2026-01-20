@@ -124,7 +124,7 @@ body{
   box-shadow: var(--shadow2); min-height: 400px; display: flex; flex-direction: column;
 }
 .chart-title{ padding: 12px 16px; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center;}
-.chart-body{ padding: 16px; flex: 1; position: relative; }
+.chart-body{ padding: 16px; flex: 1; position: relative; height: 350px;}
 canvas { width: 100% !important; height: 100% !important; }
 
 .patient-card{ padding: 22px; border-radius: 24px; background: #fff; border: 1px solid var(--border); margin-bottom: 16px; box-shadow: var(--shadow); }
@@ -819,9 +819,9 @@ details.more summary {
 }
 
 .chart-body {
-  position: relative; /* 必須：讓內部 Canvas 能根據此容器定位 */
-  height: 350px;      /* 關鍵：設定一個固定高度或 max-height */
-  width: 100%;
+  flex: 1;
+  padding: 16px;
+  min-height: 350px;
 }
 
 /* JSON 原始資料顯示區 */
