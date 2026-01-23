@@ -77,7 +77,7 @@
 <sub style="color: gray;">*數據之準確性與及時性受限於來源端 FHIR Server 之品質，開發團隊不對原始數據的錯誤、遺漏或傳輸過程中的遺失承擔法律責任。*</sub><br>
 <sub style="color: gray;">*本介面僅對原始醫療數據進行彙整與視覺化呈現，系統本身不具備任何自動診斷或建議功能，請勿將其用於替代醫師之臨床判斷。*</sub><br>
 <sub style="color: gray;">*使用者應妥善保管其醫療機構之登入憑證，開發團隊對因使用者操作不當或裝置安全漏洞導致之資訊洩漏不負損害賠償責任。*
-
+<sub style="color: gray;">*在未經醫療人員確認前，請勿根據本應用程式之數據自行調整用藥或治療流程。*</sub><br>
 
 
 
@@ -162,4 +162,4 @@ If you are a reviewer or tester, please follow these steps for a quick experienc
 <sub style="color: gray;">*The accuracy and timeliness of data are limited by the quality of the source FHIR Server. The development team assumes no legal responsibility for errors, omissions in raw data, or loss during transmission.*</sub><br>
 <sub style="color: gray;">*This interface only aggregates and visualizes raw medical data. The system itself does not possess any automated diagnostic or suggestion functions; please do not use it to replace clinical judgment by a physician.*</sub><br>
 <sub style="</sub><br>
-<sub style="color: gray;">*在未經醫療人員確認前，請勿根據本應用程式之數據自行調整用藥或治療流程。*</sub><br>
+
