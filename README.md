@@ -1,6 +1,6 @@
 # Patient Health Dashboard <br> SMART on FHIR 病患健康數據整合應用儀表板 [🔗](https://raychen21311.github.io/SMART-Test-Example2/)
 
-本專案致力於透過 HL7 FHIR 國際標準與 SMART on FHIR App 框架，打造以病患為中心的醫療數據整合方案。藉由跨院區的資料交換與直觀的視覺化監測，解決臨床數據破碎化的痛點。
+本專案致力於透過 HL7 FHIR 國際標準與 SMART on FHIR App 框架，打造以病患為中心的醫療數據整合方案。藉由跨院區的資料交換與直觀的視覺化監測，解決臨床數據破碎化的痛點。作為開源專案，我們歡迎開發者與醫療機構自由使用、修改並共同擴展功能。
 
 ## 📋 專案概述
 
@@ -61,7 +61,7 @@
 
 ## 🔐 安全性與隱私
 
-- 符合 SMART on FHIR 安全標準，不儲存任何病患個資於伺服器端。
+- 符合 SMART on FHIR 安全標準，不儲存任何病患機敏個資於伺服器端。
 - 採用 **PKCE** (Proof Key for Code Exchange) 強化授權安全。
 - 遵循最小權限原則，僅讀取經授權之 `patient/*.read` 資源。
 
@@ -86,11 +86,11 @@
 # Patient Health Dashboard 
 **SMART on FHIR Patient Health Data Integration App** [🔗](https://raychen21311.github.io/SMART-Test-Example2/)
 
-This project is dedicated to building a patient-centered medical data integration solution using the HL7 FHIR international standard and the SMART on FHIR App framework. By enabling cross-institutional data exchange and intuitive visual monitoring, it addresses the pain points of clinical data fragmentation.
+This project is dedicated to building a patient-centered medical data integration solution using the HL7 FHIR international standard and the SMART on FHIR App framework. By enabling cross-institutional data exchange and intuitive visual monitoring, it addresses the pain points of clinical data fragmentation. As an open-source initiative, we welcome developers and healthcare institutions to freely use, modify, and extend its capabilities.
 
 ## 📋 Project Overview
 
-This application aims to solve the problem of fragmented medical information, allowing healthcare professionals or patients to quickly browse comprehensive longitudinal records stored on FHIR servers through a single interface. The system not only provides physiological data trends but further integrates care plans and insurance utilization.
+This application aims to solve the problem of fragmented medical information, allowing healthcare professionals or patients to quickly browse comprehensive longitudinal records stored on FHIR servers through a single interface. The system not only provides physiological data trends but further integrates care plans and insurance utilization. 
 
 ### Core Features
 * **Data Trends Overview**: Automatically fetches `Observation` resources to plot long-term trends for indicators such as blood pressure, BMI, body temperature, heart rate, and pain scores.
