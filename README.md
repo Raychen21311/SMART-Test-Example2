@@ -38,7 +38,7 @@
 1.  **啟動應用**：點擊連結 [🔗](https://raychen21311.github.io/SMART-Test-Example2/)。
 2.  **模擬授權**：系統預設介接模擬沙盒，您只需依畫面提示點擊確認，即可模擬真實診間的 SMART Launch 登入流程。
 3.  **挑選病患**：選擇病患，以觀看視覺化圖表與數據分布。
-4.  **切換分頁**：透過上方導覽列瀏覽 **Overview (趨勢)**、**Timeline (歷程)**、**Labs (檢驗)**、**CarePlan (照護)** 及 **Utilization (保險/疫苗)** 五大核心模組。
+4.  **切換分頁**：透過上方導覽列瀏覽 **Overview (趨勢)**、**Timeline (歷程)**、**Labs (檢驗)**、**CarePlan (照護)** 及 **Utilization (就診頻率/保險/疫苗)** 五大核心模組。
 
 ---
 
