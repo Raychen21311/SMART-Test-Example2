@@ -33,8 +33,8 @@
 
 ## 🚀 快速開始
 
-1.  **設定 Client ID**：
-    請在 `index.html` 中修改 `clientId` 為您在 FHIR Server (如：MOHW THAS) 註冊的客戶端編號。
+1.  **Client ID**：
+    目前預設介接模擬沙盒環境，為使方便使用者快速體驗 SMART on FHIR 的數據呈現能力，已簡化授權登入流程。
     ```javascript
     FHIR.oauth2.authorize({
         clientId: "YOUR_CLIENT_ID",
