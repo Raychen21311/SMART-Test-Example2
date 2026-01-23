@@ -1,6 +1,6 @@
-# Patient Health Dashboard - <br>SMART on FHIR 病患健康數據整合應用 **[🔗]([https://raychen21311.github.io/專案名/SMART-Test-Example2/]**
+# Patient Health Dashboard <br> SMART on FHIR 病患健康數據整合應用 [🔗](https://raychen21311.github.io/SMART-Test-Example2/)
 
-本專案係為參加 **「臺灣 50」優良 SMART on FHIR 應用程式徵案活動** 所開發之示範應用。透過國際標準 **HL7 FHIR (R4)** 與 **SMART App Launch** 框架，實現以病患為中心的醫療數據跨院整合與視覺化監測。
+本專案致力於透過 HL7 FHIR 國際標準與 SMART on FHIR App 框架，打造以病患為中心的醫療數據整合方案。藉由跨院區的資料交換與直觀的視覺化監測，解決臨床數據破碎化的痛點。
 
 ## 📋 專案概述
 
