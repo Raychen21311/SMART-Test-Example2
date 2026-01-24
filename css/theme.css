@@ -814,14 +814,12 @@ details.more summary {
 
 /* 圖表與內容區塊樣式 */
 .chart-card {
-  display: flex;
   flex-direction: column;
 }
 
 .chart-body {
   flex: 1;
   padding: 16px;
-  min-height: 350px;
 }
 
 /* JSON 原始資料顯示區 */
