@@ -16,6 +16,6 @@ Instead, please use the **Private Vulnerability Reporting** feature on GitHub:
 3. Click "Report a vulnerability" to submit your finding privately.
 
 ## Our Commitment
-- We will acknowledge your report within 3 business days.
+- We will acknowledge your report within 7 business days.
 - We will provide an estimated timeline for a fix.
 - Once fixed, we will publish a Security Advisory and credit you for your discovery.
