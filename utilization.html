@@ -1,22 +1,27 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
+  <!-- UTF-8：避免中文亂碼 -->
   <meta charset="UTF-8" />
+  <!-- RWD -->
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Healthcare Utilization & Coverage</title>
 
+  <!-- SMART on FHIR SDK -->
   <script src="https://cdn.jsdelivr.net/npm/fhirclient/build/fhir-client.js"></script>
 
+  <!-- Chart.js + 時間軸 -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1"></script>
-  <link rel="stylesheet" href="css/theme.css">
-  <link rel="stylesheet" href="css/theme.css">
 
+  <!-- 統一 theme -->
+  <link rel="stylesheet" href="css/theme.css">
 </head>
 
 <body>
   <div class="page">
+    <!-- Topbar：品牌 + tabs + 病患 ID -->
     <div class="topbar">
       <div class="brand">
         <div class="brand-badge">PH</div>
@@ -47,17 +52,21 @@
     <h1>Healthcare Utilization & Coverage</h1>
     <p id="loadHint" style="color:var(--muted); font-weight:800">就醫次數&就醫機構型態</p>
 
-    <div class="item" id="statusBanner" style="margin: 10px 0 14px;">
-    </div>
+    <!-- ✅ 狀態列：JS 會把「載入中/完成/錯誤」顯示在這裡 -->
+    <div class="item" id="statusBanner" style="margin: 10px 0 14px;"></div>
 
+    <!-- 病人基本資料 -->
     <div class="patient-card">
       <div class="patient-block">
         <div class="name" id="pName"><span class="skeleton" style="display:inline-block;width:220px;"></span></div>
         <div class="meta">
           ID: <span id="pId_dup">（同上）</span> ｜ 性別: <span id="pGender">—</span> ｜ 生日: <span id="pBirth">—</span>
         </div>
+      </div>
     </div>
+    <!-- ✅ 補上 patient-card 的收尾 -->
 
+    <!-- KPI Summary：快速掌握就醫與理賠概況 -->
     <div class="summary-grid">
       <div class="card">
         <div class="k">Total Encounters</div>
@@ -89,7 +98,6 @@
     <div class="panel">
       <div class="section-head">
         <div class="h2">Utilization Pattern & Coverage</div>
-
       </div>
 
       <div class="two-col">
@@ -166,27 +174,28 @@
     <div class="footer">
       <span>© Patient Health</span>
     </div>
-
   </div>
 
 <script>
+  // =========================
+  // 基礎工具
+  // =========================
   const DateTime = luxon.DateTime;
-  let __smartResolved = false;
+  let chartMonthly = null;
+  let chartClass = null;
 
-  const __setStatus = (level, text) => {
-    const st = document.getElementById("statusText");
-    const pill = document.getElementById("statusPill");
-    const pillText = document.getElementById("statusPillText");
-    if(st) st.textContent = text || "";
-    if(pillText) pillText.textContent = text || "";
-    if(pill){
-      pill.classList.remove("ok","warn","bad");
-      pill.classList.add(level || "warn");
-    }
-  };
+  function returnToSelect() {
+    sessionStorage.removeItem("selected_patient_id");
+    window.location.href = "patient-select.html";
+  }
 
   function escapeHtml(s) {
-    return String(s ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
+    return String(s ?? "")
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;")
+      .replaceAll("'","&#039;");
   }
 
   function fmtDate(iso){
@@ -200,8 +209,6 @@
     const dt = DateTime.fromISO(iso);
     return dt.isValid ? dt.toFormat("yyyy-LL-dd HH:mm") : iso;
   }
-
-
 
   function safeGet(obj, path, fallback=null){
     try{
@@ -221,17 +228,39 @@
     return cc.text || (cc.coding && cc.coding[0]?.display) || (cc.coding && cc.coding[0]?.code) || "—";
   }
 
-  function returnToSelect() {
-    sessionStorage.removeItem("selected_patient_id");
-    window.location.href = "patient-select.html";
+  // ✅ 狀態列：直接寫到 statusBanner（你 HTML 已經有這個容器）
+  function setStatus(level, text){
+    const host = document.getElementById("statusBanner");
+    if(!host) return;
+
+    // level: ok / warn / bad（對應 theme 的顏色 class）
+    const lv = level || "warn";
+    host.innerHTML = `
+      <div class="status-pill ${lv}" style="display:inline-flex;align-items:center;gap:10px;">
+        <div class="dot"></div>
+        <div>${escapeHtml(text || "")}</div>
+      </div>
+    `;
+
+    // 右上角 dot 也同步（讓使用者知道 SMART session 是否 OK）
+    const dot = document.getElementById("readyDot");
+    if(dot){
+      dot.classList.remove("ok","warn","bad");
+      dot.classList.add(lv);
+    }
   }
 
+  // =========================
+  // FHIR Bundle paging：抓多頁資料
+  // =========================
   async function requestAll(client, initialUrl, maxPages=10){
     const out = [];
     let url = initialUrl;
+
     for(let i=0; i<maxPages; i++){
       const bundle = await client.request(url);
       (bundle.entry || []).forEach(e => { if(e.resource) out.push(e.resource); });
+
       const next = (bundle.link || []).find(l => l.relation === "next");
       if(!next || !next.url) break;
       url = next.url;
@@ -239,24 +268,30 @@
     return out;
   }
 
-  let chart2 = null, chartClass = null;
-
+  // =========================
+  // 主流程：OAuth ready → 讀 patient → 讀 Encounter/Claim/EOB/Imm → KPI/圖/列表
+  // =========================
   FHIR.oauth2.ready().then(async (client) => {
-    __smartResolved = true;
-    let patientId = sessionStorage.getItem("selected_patient_id") || client.patient.id;
+    setStatus("warn", "正在載入資料...");
+
+    // ✅ 安全取得 patientId：避免 client.patient 不存在就噴錯
+    let patientId = sessionStorage.getItem("selected_patient_id");
+    if(!patientId && client.patient && client.patient.id) patientId = client.patient.id;
     if (!patientId) throw new Error("找不到病患 ID");
 
+    // 讀 Patient
     const patient = await client.request(`Patient/${patientId}`);
     const name = patient.name
-        ? (patient.name[0].text || (patient.name[0].prefix + " " + patient.name[0].family + " " +
-        " " + (patient.name[0].given ? patient.name[0].given.join(" ") : "")))
-        : "未知姓名";
+      ? (patient.name[0].text || `${patient.name[0].prefix || ''} ${patient.name[0].family || ''} ${patient.name[0].given ? patient.name[0].given.join(" ") : ''}`.trim())
+      : "未知姓名";
+
     document.getElementById("pName").textContent = name;
-    document.getElementById("pId").textContent = patient.id;
-    if(document.getElementById("pId_dup")) document.getElementById("pId_dup").textContent = patient.id;
+    document.getElementById("pId").textContent = patientId;
+    if(document.getElementById("pId_dup")) document.getElementById("pId_dup").textContent = patientId;
     document.getElementById("pGender").textContent = patient.gender || "—";
     document.getElementById("pBirth").textContent = fmtDate(patient.birthDate);
 
+    // 平行抓四類資料：Encounter / Claim / EOB / Immunization
     const [encs, claims, eobs, imms] = await Promise.all([
       requestAll(client, `Encounter?patient=${patientId}&_count=100`),
       requestAll(client, `Claim?patient=${patientId}&_count=100`),
@@ -264,101 +299,151 @@
       requestAll(client, `Immunization?patient=${patientId}&_count=100`)
     ]);
 
+    // KPI：總量
     document.getElementById("kpiEnc").textContent = encs.length;
     document.getElementById("kpiClaim").textContent = claims.length;
     document.getElementById("kpiEob").textContent = eobs.length;
 
-    // KPI: Providers
-    const provs = uniq([...encs.map(e=>e.serviceProvider?.reference), ...claims.map(c=>c.provider?.reference)]);
+    // KPI：Providers（Encounter.serviceProvider + Claim.provider）
+    const provs = uniq([
+      ...encs.map(e => e.serviceProvider?.reference),
+      ...claims.map(c => c.provider?.reference)
+    ]);
     document.getElementById("kpiProv").textContent = provs.length;
 
-    // KPI: Last date
+    // KPI：最近一次就醫（Encounter.period.start）
     const dates = encs.map(e => e.period?.start).filter(Boolean).sort();
     document.getElementById("kpiLast").textContent = dates.length ? fmtDate(dates[dates.length-1]) : "—";
 
-    // KPI: Zero Pay
+    // KPI：$0 payment 的 EOB 數量
     const zeroPay = eobs.filter(e => safeGet(e, "payment.amount.value") === 0).length;
     document.getElementById("kpiZeroPay").textContent = zeroPay;
 
+    // 圖表 + 列表
     buildMonthlyHistogram(encs);
     buildEncounterClassChart(encs);
-    renderEobList(eobs, claims);
-    renderImmunizationList(imms, claims);
+    renderEobList(eobs);
+    renderImmunizationList(imms);
 
-    __setStatus("ok", "資料載入完成");
+    setStatus("ok", "資料載入完成");
   }).catch(err => {
-    __setStatus("bad", "錯誤: " + err.message);
     console.error(err);
+    setStatus("bad", "錯誤: " + (err?.message || String(err)));
   });
 
+  // =========================
+  // 圖 1：每月就醫次數（Encounter per month）
+  // =========================
   function buildMonthlyHistogram(encs){
     const buckets = {};
     encs.forEach(e => {
       const d = e.period?.start;
       if(!d) return;
-      const key = d.substring(0, 7);
+      const key = d.substring(0, 7); // yyyy-mm
       buckets[key] = (buckets[key] || 0) + 1;
     });
+
     const labels = Object.keys(buckets).sort();
     const values = labels.map(l => buckets[l]);
-    new Chart(document.getElementById("utilMonthlyChart"), {
+
+    // ✅ destroy 舊圖，避免重建出錯
+    if(chartMonthly) chartMonthly.destroy();
+
+    chartMonthly = new Chart(document.getElementById("utilMonthlyChart"), {
       type: 'bar',
       data: { labels, datasets: [{ label: '就醫次數', data: values, backgroundColor: '#3b82f6' }] },
       options: { maintainAspectRatio: false }
     });
   }
 
+  // =========================
+  // 圖 2：Encounter.class 分佈（AMB/ER/IP）
+  // =========================
   function buildEncounterClassChart(encs){
     const counts = {};
     encs.forEach(e => {
       const c = e.class?.code || 'UNK';
       counts[c] = (counts[c] || 0) + 1;
     });
-    new Chart(document.getElementById("encounterClassChart"), {
+
+    if(chartClass) chartClass.destroy();
+
+    chartClass = new Chart(document.getElementById("encounterClassChart"), {
       type: 'pie',
-      data: { 
-        labels: Object.keys(counts), 
-        datasets: [{ data: Object.values(counts), backgroundColor: ['#3b82f6','#10b981','#f59e0b','#ef4444'] }] 
+      data: {
+        labels: Object.keys(counts),
+        datasets: [{ data: Object.values(counts), backgroundColor: ['#3b82f6','#10b981','#f59e0b','#ef4444'] }]
       },
       options: { maintainAspectRatio: false }
     });
   }
 
-  function renderEobList(eobs, claims){
+  // =========================
+  // EOB List：逐筆列出 ExplanationOfBenefit（並顯示 payment）
+  // =========================
+  function renderEobList(eobs){
     const host = document.getElementById("eobList");
     host.innerHTML = "";
-    if(!eobs.length) { host.innerHTML = "無資料"; return; }
 
-    eobs.forEach(eob => {
-      const payV = safeGet(eob, "payment.amount.value");
-      const statusClass = (payV > 0) ? "ok" : (payV === 0 ? "bad" : "warn");
-      const div = document.createElement("div");
-      div.className = "item";
-      div.innerHTML = `
-        <div class="title">EOB / ${eob.id}</div>
-        <div class="meta">日期: ${fmtDate(eob.created)}</div>
-        <div class="status-pill ${statusClass}"><div class="dot"></div><div>Payment: ${asMoney(payV, safeGet(eob,"payment.amount.currency"))}</div></div>
-        <details class="more"><summary>Raw JSON</summary><div class="kv">${escapeHtml(JSON.stringify(eob, null, 2))}</div></details>
-      `;
-      host.appendChild(div);
-    });
+    if(!eobs.length) {
+      host.innerHTML = `<div class="item">無資料</div>`;
+      return;
+    }
+
+    // 你也可以在這裡先 sort：依 created 新→舊（加分）
+    eobs
+      .slice()
+      .sort((a,b)=> new Date((b.created||0)) - new Date((a.created||0)))
+      .forEach(eob => {
+        const payV = safeGet(eob, "payment.amount.value");
+        const statusClass = (payV > 0) ? "ok" : (payV === 0 ? "bad" : "warn");
+
+        const div = document.createElement("div");
+        div.className = "item";
+        div.innerHTML = `
+          <div class="title">EOB / ${escapeHtml(eob.id)}</div>
+          <div class="meta">日期: ${escapeHtml(fmtDate(eob.created))}</div>
+          <div class="status-pill ${statusClass}">
+            <div class="dot"></div>
+            <div>Payment: ${escapeHtml(asMoney(payV, safeGet(eob,"payment.amount.currency")))}</div>
+          </div>
+          <details class="more">
+            <summary>Raw JSON</summary>
+            <div class="kv">${escapeHtml(JSON.stringify(eob, null, 2))}</div>
+          </details>
+        `;
+        host.appendChild(div);
+      });
   }
 
-  function renderImmunizationList(imms, claims){
+  // =========================
+  // Immunization List：疫苗施打時間軸（列表形式）
+  // =========================
+  function renderImmunizationList(imms){
     const host = document.getElementById("immList");
     host.innerHTML = "";
-    if(!imms.length) { host.innerHTML = "無資料"; return; }
 
-    imms.forEach(imm => {
-      const div = document.createElement("div");
-      div.className = "item";
-      div.innerHTML = `
-        <div class="title">${codeDisplay(imm.vaccineCode)}</div>
-        <div class="meta">施打日期: ${fmtDateTime(imm.occurrenceDateTime)}</div>
-        <details class="more"><summary>Raw JSON</summary><div class="kv">${escapeHtml(JSON.stringify(imm, null, 2))}</div></details>
-      `;
-      host.appendChild(div);
-    });
+    if(!imms.length) {
+      host.innerHTML = `<div class="item">無資料</div>`;
+      return;
+    }
+
+    imms
+      .slice()
+      .sort((a,b)=> new Date((b.occurrenceDateTime||0)) - new Date((a.occurrenceDateTime||0)))
+      .forEach(imm => {
+        const div = document.createElement("div");
+        div.className = "item";
+        div.innerHTML = `
+          <div class="title">${escapeHtml(codeDisplay(imm.vaccineCode))}</div>
+          <div class="meta">施打日期: ${escapeHtml(fmtDateTime(imm.occurrenceDateTime))}</div>
+          <details class="more">
+            <summary>Raw JSON</summary>
+            <div class="kv">${escapeHtml(JSON.stringify(imm, null, 2))}</div>
+          </details>
+        `;
+        host.appendChild(div);
+      });
   }
 </script>
 </body>
