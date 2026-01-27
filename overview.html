@@ -272,7 +272,7 @@
         });
       } else {
         // 沒血壓資料也不要卡住其他圖表
-        setCard("cardBP", "無資料", "dateBP", "—");
+        setCard("cardBP", "_", "dateBP", "—");
       }
 
       // 4) 身高/體重（兩個 code 分開抓）
@@ -292,32 +292,32 @@
 
         setCard("cardHW", `${h} / ${w}`, "dateHW", `cm/kg ${fmtDate(latestDate)}`);
       } else {
-        setCard("cardHW", "無資料", "dateHW", "—");
+        setCard("cardHW", "_", "dateHW", "—");
       }
 
       // 5) BMI
       const bmi = await fetchSeries(client, patientId, "39156-5");
       drawChart("bmiChart", "BMI", bmi.data, "#10b981");
       if (bmi.latest) setCard("cardBMI", bmi.latest.y.toFixed(1), "dateBMI", fmtDate(bmi.latest.x));
-      else setCard("cardBMI", "無資料", "dateBMI", "—");
+      else setCard("cardBMI", "_", "dateBMI", "—");
 
       // 6) 疼痛評分
       const pain = await fetchSeries(client, patientId, "72514-3");
       drawChart("painChart", "疼痛評分", pain.data, "#8b5cf6");
       if (pain.latest) setCard("cardPAIN", pain.latest.y.toFixed(0) + " / 10", "datePAIN", fmtDate(pain.latest.x));
-      else setCard("cardPAIN", "無資料", "datePAIN", "—");
+      else setCard("cardPAIN", "_", "datePAIN", "—");
 
       // 7) 體溫
       const temp = await fetchSeries(client, patientId, "8310-5");
       drawChart("tempChart", "體溫 (°C)", temp.data, "#3b82f6");
       if (temp.latest) setCard("cardTEMP", temp.latest.y + " °C", "dateTEMP", fmtDate(temp.latest.x));
-      else setCard("cardTEMP", "無資料", "dateTEMP", "—");
+      else setCard("cardTEMP", "_", "dateTEMP", "—");
 
       // 8) 心跳
       const heart = await fetchSeries(client, patientId, "8867-4");
       drawChart("heartChart", "心跳 (bpm)", heart.data, "#ef4444");
       if (heart.latest) setCard("cardHEART", heart.latest.y + " bpm", "dateHEART", fmtDate(heart.latest.x));
-      else setCard("cardHEART", "無資料", "dateHEART", "—");
+      else setCard("cardHEART", "_", "dateHEART", "—");
 
     }).catch(err => {
       // ❗避免再呼叫不存在的 setText/showDebug，否則會讓錯誤被「二次錯誤」蓋掉
@@ -336,3 +336,4 @@
   </script>
 </body>
 </html>
+
