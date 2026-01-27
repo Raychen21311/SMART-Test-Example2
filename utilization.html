@@ -272,7 +272,7 @@
   // 主流程：OAuth ready → 讀 patient → 讀 Encounter/Claim/EOB/Imm → KPI/圖/列表
   // =========================
   FHIR.oauth2.ready().then(async (client) => {
-    setStatus("warn", "正在載入資料...");
+
 
     // ✅ 安全取得 patientId：避免 client.patient 不存在就噴錯
     let patientId = sessionStorage.getItem("selected_patient_id");
@@ -325,7 +325,7 @@
     renderEobList(eobs);
     renderImmunizationList(imms);
 
-    setStatus("ok", "資料載入完成");
+
   }).catch(err => {
     console.error(err);
     setStatus("bad", "錯誤: " + (err?.message || String(err)));
