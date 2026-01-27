@@ -58,6 +58,7 @@ body{
   backdrop-filter: blur(10px);
   border-radius: var(--r24);
   box-shadow: var(--shadow2);
+  flex-wrap: wrap;
   display:flex;
   align-items:center;
   justify-content:space-between;
